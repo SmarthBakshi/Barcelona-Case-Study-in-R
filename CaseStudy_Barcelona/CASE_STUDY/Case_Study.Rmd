@@ -1,7 +1,7 @@
 ---
 title: "Data Analysis and Visualization in R (IN2339)"
 subtitle: "Case Study"
-author: "Aditi Arora, Smarth Bakshi, Ishan Bhattacharya, Francisca Andrea Lagos López"
+author: "Smarth Bakshi"
 date: "`r Sys.Date()`"
 output:
   pdf_document: default
