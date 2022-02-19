@@ -1,4 +1,4 @@
-# Kaggle_Barcelona_Project
+# Barcelona Case Study 
 
 ## Data Preparation
 
