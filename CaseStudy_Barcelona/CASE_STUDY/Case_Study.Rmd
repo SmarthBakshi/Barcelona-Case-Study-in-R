@@ -1,0 +1,664 @@
+---
+title: "Data Analysis and Visualization in R (IN2339)"
+subtitle: "Case Study"
+author: "Aditi Arora, Smarth Bakshi, Ishan Bhattacharya, Francisca Andrea Lagos López"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+
+```{r, include=FALSE}
+## Load all the needed libraries. No need to include this in your compiled pdf document so we set echo=FALSE
+library(ggplot2)
+library(data.table)
+library(magrittr) # Needed for %>% operator
+library(tidyr)
+library(GGally)
+library(pheatmap)
+library(mclust)
+library(readr)
+library(reshape2)
+library(reshape)
+library(gdata)
+library(ggrepel)
+library(data.table)
+library(tidydr)
+library(gapminder)
+library(factoextra)
+library(dplyr)
+library(writexl)
+library(maps)
+library(mapdata)
+library(rgdal)
+library(ggmap)
+library(RColorBrewer)
+library(broom)
+library(gridExtra)
+```
+
+## Motivation
+
+Open to the Mediterranean Sea and famous for Gaudí and his modernist architecture, Barcelona is revealed as one of the most important European capitals. The city is a focus of new trends in the world of culture, fashion and gastronomy. It combines the creativity of its artists and designers with respect and care for the traditional places of all time. In it, the charm and pause of its historic center, the avant-garde of its most modern neighborhoods and the urban rhythm of one of the most visited cities in the world coexist.
+
+Notwithstanding the foregoing, is Barcelona a good place to migrate? In the following report, an analysis of the allocation of its inhabitants will be carried out, in particular of the immigrants who have decided to settle there. As Malgesini (2006) states, most of the immigrants settle down in centric urban areas due to the economic, social and cultural opportunities that main cities can offer. Figure 1.2  supports the above showing that l'Eixample -home district of the famous Sagrada Familia church and the Milà and La Pedrera Gaudì houses-  is the most popular destination for immigrants to allocate.
+
+
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,,fig.height = 2,fig.width=5,fig.align="center"}
+## Plotting Map of Barcelona Districts
+## District to id map (should be a better way to do this)
+
+population <- fread('data/population.csv',encoding="UTF-8")
+district_pop_year <- population[,sum(Number),by=c('Year','District.Code')]
+district_pop_year[,Year:=factor(Year)]
+district_pop_year[,District.Code:=factor(District.Code)]
+accidents <- fread('data/accidents_2017.csv',encoding="UTF-8")
+district_accident <- accidents[,.N,by=`District Name`]
+colnames(district_accident) = c("District.Name","num")
+district_accident[,'District.Name':=factor(District.Name)]
+district_pop_2017 <- population[Year==2017,sum(Number),by='District.Name']
+setnames(district_pop_2017, 'V1','Pop')
+district_accident_with_pop <- merge(district_accident,district_pop_2017,by='District.Name')
+district_accident_with_pop[,'accidents_per_1000':= (num/Pop)*1000]
+# district_accident_with_pop
+
+my_spdf <- readOGR(dsn= "geoportal_bcn/ExportToSHP/L%C3%ADmitdistricte.shp",
+  verbose=FALSE, encoding="UTF-8"
+)
+spdf_fortified <- tidy(my_spdf)
+
+district_id_map <- data.table(id=as.character(c(0:9)),
+                    District.Name=c(district_accident_with_pop$District.Name[10],
+      district_accident_with_pop$District.Name[8],district_accident_with_pop$District.Name[6],
+      district_accident_with_pop$District.Name[2],district_accident_with_pop$District.Name[4],
+      district_accident_with_pop$District.Name[3],district_accident_with_pop$District.Name[5],
+      district_accident_with_pop$District.Name[1],district_accident_with_pop$District.Name[7],
+      district_accident_with_pop$District.Name[9]))
+
+
+test_new_spdf <- merge(as.data.table(spdf_fortified),district_id_map,by="id")
+## Adding labels
+cnames_test <- aggregate(cbind(long, lat) ~ District.Name, data=test_new_spdf, 
+                    FUN=function(x)mean(range(x)))
+## Adding immigrants data to map
+immigrant_data <- fread('data/immigrants_by_nationality.csv',encoding="UTF-8")
+immigrant_data <- immigrant_data[Year==2017,sum(Number),by="District Name"]
+colnames(immigrant_data) = c("District.Name","immigrant_count")
+immigrant_spdf <- merge(test_new_spdf,immigrant_data,
+                       by='District.Name')
+pop_spdf <- merge(test_new_spdf,district_accident_with_pop,
+                       by='District.Name')
+
+
+mynamestheme <- theme(plot.title = element_text(family = "Helvetica", size = (9)),
+                      legend.title=element_text(family="Helvetica", size= (8)), 
+                      legend.text = element_text(family = "Helvetica", size =(8)),
+                      axis.title = element_text(family = "Helvetica", size = (8)),
+                      axis.text = element_text(family = "Helvetica", colour = "grey", size = (5))) 
+
+
+ggplot(data = pop_spdf) +
+  geom_polygon(data = pop_spdf, aes( x = long, y = lat, group = group, fill=Pop)) +
+  geom_text(data=cnames_test, aes(long, lat, label = District.Name), size=2)+
+  scale_fill_gradient(low = "antiquewhite", high = "darkcyan")+
+  scale_colour_discrete(guide = FALSE)+
+  ggtitle("Figure 1.1: Total population by districts")+
+  labs(x="Longitud", y="Latitude")+
+  labs(fill = "Population")+
+  mynamestheme
+
+
+ggplot(data = immigrant_spdf) +
+  geom_polygon(data = immigrant_spdf, aes( x = long, y = lat, group = group,fill=immigrant_count)) +
+  geom_text(data=cnames_test, aes(long, lat, label = District.Name), size=2)+
+  scale_fill_gradient(low = "antiquewhite", high = "darkcyan")+
+  scale_colour_discrete(guide = FALSE)+
+  ggtitle("Figure 1.2: Total immigrant population by districts")+
+  labs(x="Longitud", y="Latitude")+
+  labs(fill = "Immigrants population")+
+  mynamestheme
+
+
+
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,fig.height = 2,fig.width=5,fig.align="center"}
+
+
+
+```
+
+
+Literature widely reveals allocation patterns for immigrants taking into account socio demographic variables, like education, salary, age of arrival to the country, sex, local language profency, ethnicity and others. In this case study, the objective is to glimpse if there is any immigrant allocation pattern with respect to the inherent characteristics of each of the 73 neighborhoods of the city of Barcelona, such as connectivity, rate of accidents, unemployment, life expectancy, population, etc. For the above four correlation analyses will be conducted, considering the number of immigrants per neighborhood in 2017 and the different characterizing explanatory variables. Afterwards, the existence of a linear relationship between the dependent variable number of immigrants and the explanatory ones will be tested. 
+
+
+## Data Preparation
+
+<!-- *[YOUR DATA PREPARATION STEPS HERE. Do not display unneccessary code chunks in the pdf file. Briefly explain which steps were needed for your analysis and which datasets (in tidy format) you consider.]* -->
+
+
+In this section, the needed data preparation steps required for the analysis is performed. Unnecessary chunk codes are omitted in the compiled pdf-file. First of all, the actual allocation of the immigrants in the city is revealed, for which the “immigrants_by_nationality.csv” file was used. Due to the lack of data and the impossibility to differentiating them, all types of migrations were considered, including the internal one, even when this group represents 36.32% of all migrations data in 2017 (35,354/97,327). 
+
+The data preparation steps for the different variables are as follow:
+
+For understanding the connectivity of each neighborhood, the “bus_stop.csv”  file was used. After tidying up missing or mistaken values, and deleting duplicate ones, the final count of metro stations and bus stops per neighborhood was calculated. For counting the number of bus stop per area, just the "Day bus stop" and "Night bus stop" variables were considered and sum up in the “dayandnigth_count” column, leaving appart the "Airport bus stop" and "Bus station" ones because they are just a few observations and do not really impact in the daily connectivity of the hood. 
+
+The “accidents_2017.csv” file contains the number of accidents, exact location and severity details for 10,339 observations during the year 2017. Since areas with higher population would have higher accidents, the number of accidentes was normalized using the total population of that neighborhood and accidents per 1,000 persons.
+
+The “life_expectancy.csv” file contains life expectancy data for different neighborhoods of Barcelona. For this purpose, the mean life expectancy per neighborhood was taken. To do so, the average of life expectancy over the years 2006-2014 was calculated. Finally, the average of male and female population for each neighborhood was estimated. To achieve the above the melting and casting operations on the original data table were used.
+
+Last but not least, the “unemployment.csv” and “population.csv'' contains the number of unemployed individuals and population at districts and neighborhood level for the years 2013 - 2017. The immigrant_emigrants_age consists of immigrants data for the years 2015-2017. The registered unemployed data at neighborhood level is extracted and merged with neighborhood's population data for the 2015-2017 time period. The resultant table is then merged with immigrants data at neighborhood level, also the unemployment is then normalized by population and consequently used for analysis and visualization. 
+
+
+<!-- bUS sTOPS -->
+```{r,echo=FALSE, results='hide'}
+## BUS STOPS
+
+#create complementary data table for coding the districs and neighborhoods
+codes <- data.table(
+  district_code= c(1,	1,	1,	1,	2,	2,	2,	2,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	
+                   4,	4,	4,	5,	5,	5,	5,	5,	5,	6,	6,	6,	6,	6,	
+                   7,	7,	7,	7,	7,	7,	7,	7,	7,	7,	7,	8,	8,	8,	8,	8,	8,	8,	8,	8,	8,	8,	8,	8,	
+                   9,	9,	9,	9,	9,	9,	9,	10,	10,	10,	10,	10,	10,	10,	10,	10,	10),
+  district_name= c("Ciutat Vella",	"Ciutat Vella",	"Ciutat Vella",	"Ciutat Vella",	
+                   "Eixample",	"Eixample",	"Eixample",	"Eixample",	"Eixample",	"Eixample",	
+                   "Sants-MontjuÃ¯c",	"Sants-MontjuÃ¯c",	"Sants-MontjuÃ¯c",	"Sants-MontjuÃ¯c",	"Sants-MontjuÃ¯c",	
+                   "Sants-MontjuÃ¯c",	"Sants-MontjuÃ¯c",	"Sants-MontjuÃ¯c",	"Les Corts",	"Les Corts",	
+                   "Les Corts",	"SarriÃ -Sant Gervasi",	"SarriÃ -Sant Gervasi",	"SarriÃ -Sant Gervasi",	
+                   "SarriÃ -Sant Gervasi",	"SarriÃ -Sant Gervasi",	"SarriÃ -Sant Gervasi",	"GrÃ cia",	
+                   "GrÃ cia",	"GrÃ cia",	"GrÃ cia",	"GrÃ cia",	"Horta-GuinardÃ³",	"Horta-GuinardÃ³",	
+                   "Horta-GuinardÃ³",	"Horta-GuinardÃ³",	"Horta-GuinardÃ³",	"Horta-GuinardÃ³",	"Horta-GuinardÃ³",	
+                   "Horta-GuinardÃ³",	"Horta-GuinardÃ³",	"Horta-GuinardÃ³",	"Horta-GuinardÃ³",	"Nou Barris",	
+                   "Nou Barris",	"Nou Barris",	"Nou Barris",	"Nou Barris",	"Nou Barris",	"Nou Barris",	
+                   "Nou Barris",	"Nou Barris",	"Nou Barris",	"Nou Barris",	"Nou Barris",	"Nou Barris",	
+                   "Sant Andreu",	"Sant Andreu",	"Sant Andreu",	"Sant Andreu",	"Sant Andreu",	"Sant Andreu",	
+                   "Sant Andreu",	"Sant MartÃ­",	"Sant MartÃ­",	"Sant MartÃ­",	"Sant MartÃ­",	"Sant MartÃ­",	
+                   "Sant MartÃ­",	"Sant MartÃ­",	"Sant MartÃ­",	"Sant MartÃ­",	"Sant MartÃ­"),
+  neighborhood_code= c(1,	2,	3,	4,	5,	6,	7,	8,	9,	10,	11,	12,	13,	14,	15,	16,	17,	18,	19,	20,	21,	22,	
+                       23,	24,	25,	26,	27,	28,	29,	30,	31,	32,	33,	34,	35,	36,	37,	38,	39,	40,	41,	42,	43,	44,	
+                       45,	46,	47,	48,	49,	50,	51,	52,	53,	54,	55,	56,	57,	58,	59,	60,	61,	62,	63,	64,	65,	66,	
+                       67,	68,	69,	70,	71,	72,	73),
+  neighborhood_name= c("el Raval",	"el Barri GÃ²tic",	"la Barceloneta",	"Sant Pere, Santa Caterina i la Ribera",	
+                       "el Fort Pienc",	"la Sagrada FamÃ­lia",	"la Dreta de l'Eixample",	
+                       "l'Antiga Esquerra de l'Eixample",	"la Nova Esquerra de l'Eixample",	"Sant Antoni",	
+                       "el Poble Sec",	"la Marina del Prat Vermell",	"la Marina de Port",	"la Font de la Guatlla",	
+                       "Hostafrancs",	"la Bordeta",	"Sants - Badal",	"Sants",	"les Corts",	"la Maternitat i Sant Ramon",	
+                       "Pedralbes",	"Vallvidrera, el Tibidabo i les Planes",	"SarriÃ ",	"les Tres Torres",	
+                       "Sant Gervasi - la Bonanova",	"Sant Gervasi - Galvany",	"el Putxet i el FarrÃ³",	
+                       "Vallcarca i els Penitents",	"el Coll",	"la Salut",	"la Vila de GrÃ cia",
+                       "el Camp d'en Grassot i GrÃ cia Nova",	"el Baix GuinardÃ³",	"Can BarÃ³",	"el GuinardÃ³",	
+                       "la Font d'en Fargues",	"el Carmel",	"la Teixonera",	"Sant GenÃ­s dels Agudells",	"Montbau",	
+                       "la Vall d'Hebron",	"la Clota",	"Horta",	"Vilapicina i la Torre Llobeta",	"Porta",	
+                       "el TurÃ³ de la Peira",	"Can Peguera",	"la Guineueta",	"Canyelles",	"les Roquetes",	
+                       "Verdun",	"la Prosperitat",	"la Trinitat Nova",	"Torre BarÃ³",	"Ciutat Meridiana",	
+                       "Vallbona",	"la Trinitat Vella",	"BarÃ³ de Viver",	"el Bon Pastor",	"Sant Andreu",	
+                       "la Sagrera",	"el CongrÃ©s i els Indians",	"Navas",	"el Camp de l'Arpa del Clot",	
+                       "el Clot",	"el Parc i la Llacuna del Poblenou",	"la Vila OlÃ­mpica del Poblenou",	
+                       "el Poblenou",	"Diagonal Mar i el Front MarÃ­tim del Poblenou",	"el BesÃ²s i el Maresme",	
+                       "ProvenÃ§als del Poblenou",	"Sant MartÃ­ de ProvenÃ§als",	"la Verneda i la Pau")
+)
+
+
+#Read data bases
+immigrants <- fread("data/immigrants_by_nationality.csv")
+immigrants <- rename_with(immigrants, tolower)
+immigrants <- rename(immigrants, "neighborhood_name" = "neighborhood name")
+immigrants <- rename(immigrants, "district_name" = "district name")
+immigrants <- rename(immigrants, "neighborhood_code" = "neighborhood code")
+immigrants <- rename(immigrants, "district_code" = "district code")
+immigrants_count_d <- immigrants[year==2017,.(N = sum(number)), by = "district_name"]
+immigrants_count_d <- rename(immigrants_count_d, "number_immigrants" = "N")
+immigrants_count_n <- immigrants[year==2017,.(N = sum(number)), by = "neighborhood_name"]
+immigrants_count_n <- rename(immigrants_count_n, "number_immigrants" = "N")
+
+bus_stops <- fread("data/bus_stops.csv")
+bus_stops <- rename_with(bus_stops, tolower)
+bus_stops <- rename(bus_stops, "district_name" = "district.name")
+bus_stops <- rename(bus_stops, "neighborhood_name" = "neighborhood.name")
+bus_stops <- bus_stops[!(bus_stops$neighborhood_name==""),]   #se borran 20 datos que no tienen neighborhood
+unique(bus_stops$transport)
+
+#Day bus stop by neighborhood
+day_bus_stop_count <- bus_stops[transport == "Day bus stop", .N, by = "neighborhood_name"]
+night_bus_stop_count <- bus_stops[transport == "Night bus stop", .N, by = "neighborhood_name"]
+
+#Summing up day + night by neighborhood
+dayandnight_count <- merge(day_bus_stop_count, night_bus_stop_count, by = "neighborhood_name" , all.x = TRUE)
+dayandnight_count[is.na(dayandnight_count)] <- 0
+dayandnight_count <- dayandnight_count[, dayandnight_count := (dayandnight_count$N.x+dayandnight_count$N.y)]
+dayandnight_count <- rename(dayandnight_count, "day_bus_stop_count" = "N.x")
+dayandnight_count <- rename(dayandnight_count, "night_bus_stop_count" = "N.y")
+
+dayandnight_count_neighborhood <- merge(dayandnight_count, codes, by= "neighborhood_name", all.x=TRUE)
+dayandnight_count_neighborhood$district_code <- NULL
+dayandnight_count_neighborhood$district_name <- NULL
+dayandnight_count_neighborhood <- merge(dayandnight_count_neighborhood, immigrants_count_n, by= "neighborhood_name", all.x = TRUE)
+
+
+#Day bus stop by district
+day_bus_stop_count_d <- bus_stops[transport == "Day bus stop", .N, by = "district_name"]
+night_bus_stop_count_d <- bus_stops[transport == "Night bus stop", .N, by = "district_name"]
+
+#Summing up day + night by district
+dayandnight_count_d <- merge(day_bus_stop_count_d, night_bus_stop_count_d, by = "district_name" , all.x = TRUE)
+dayandnight_count_d[is.na(dayandnight_count_d)] <- 0
+dayandnight_count_d <- dayandnight_count_d[, dayandnight_count := (dayandnight_count_d$N.x+dayandnight_count_d$N.y)]
+dayandnight_count_d <- rename(dayandnight_count_d, "day_bus_stop_count" = "N.x")
+dayandnight_count_d <- rename(dayandnight_count_d, "night_bus_stop_count" = "N.y")
+
+codes$neighborhood_code <- NULL
+codes$neighborhood_name <- NULL
+codes <- distinct(codes)
+dayandnight_count_district <- merge(dayandnight_count_d, codes, by= "district_name", all.x=TRUE)
+dayandnight_count_district <- merge(dayandnight_count_district, immigrants_count_d, by= "district_name", all.x = TRUE)
+
+#Airport bus stop
+airport_count <- bus_stops[transport == "Airport bus stop", .N, by = "neighborhood_name"]
+
+#Bus station
+bus_station_count <- bus_stops[transport == "Bus station", .N, by = "neighborhood_name"]
+
+
+#At the end what you need is dayandnight_count_neighborhood, and dayandnight_count district
+# View(dayandnight_count_district)
+head(dayandnight_count_neighborhood)
+
+
+```
+<!-- Accidents -->
+```{r,echo=FALSE, results='hide'}
+## ACCIDENTS
+
+population <- fread('data/population.csv')
+
+# head(population)
+# 
+# summary(population)
+
+# population[,sum(Number),by=c('Year','Neighborhood.Code')]
+
+## Not a huge change in population
+# population[,sum(Number),by=c('Year')]
+
+nbr_pop_year <- population[,sum(Number),by=c('Year','Neighborhood.Code')]
+
+nbr_pop_year[,Year:=factor(Year)]
+nbr_pop_year[,Neighborhood.Code:=factor(Neighborhood.Code)]
+
+accidents <- fread('data/accidents_2017.csv')
+
+# head(accidents)
+
+# summary(accidents)
+
+# unique(accidents$`Neighborhood Name`)
+nbr_accident <- accidents[,.N,by=`Neighborhood Name`]
+
+colnames(nbr_accident) = c("Neighborhood.Name","num")
+
+nbr_accident[,'Neighborhood.Name':=factor(Neighborhood.Name)]
+
+
+### Normalise with the population in each district
+
+nbr_accident <- nbr_accident[Neighborhood.Name!='Unknown']
+
+nbr_pop_2017 <- population[Year==2017,sum(Number),by='Neighborhood.Name']
+setnames(nbr_pop_2017, 'V1','Pop')
+
+nbr_accident_with_pop <- merge(nbr_accident,nbr_pop_2017,by='Neighborhood.Name')
+nbr_accident_with_pop[,'accidents_per_1000':= (num/Pop)*1000]
+
+# nbr_accident_with_pop
+
+# nbr_accident_with_pop[order(-accidents_per_1000)]
+
+immigrant_data <- fread('data/immigrants_by_nationality.csv')
+immigrant_data <- immigrant_data[Year==2017,sum(Number),by="Neighborhood Name"]
+
+# immigrant_data <- immigrant_data[,sum(weight),by=to][to%in%district_accident_with_pop[,District.Name]]
+
+colnames(immigrant_data) = c("Neighborhood.Name","immigrant_count")
+
+# head(immigrant_data)
+
+
+merged_accidents_immigrants <- merge(nbr_accident_with_pop,immigrant_data)
+
+head(merged_accidents_immigrants)
+
+```
+<!-- Unemployment -->
+```{r,echo=FALSE, results='hide'}
+## UNEMPLOYMENT
+
+population <- fread("data/population.csv")
+immigrants_emigrants_age <- fread("data/immigrants_emigrants_by_age.csv")
+unemployment <- fread("data/unemployment.csv")
+
+unemployment <- rename_with(unemployment, tolower)
+colnames(unemployment) <- gsub(" ", "_", colnames(unemployment))
+
+population_subset <- as.data.table(subset(population, select = -c(2,3,6)))
+# View(population_subset)
+# str(population_subset)
+
+population_subset <- population_subset[,neighborhood.population := sum(Number),by = c("Neighborhood.Name","Year")]
+# population_subset[Year == 2013 & Neighborhood.Code == 2]
+
+#Population -- at neighborhood level
+pop_by_neighborhood <- distinct(population_subset, Year, Neighborhood.Name, .keep_all = TRUE)
+pop_by_neighborhood <- rename_with(pop_by_neighborhood, tolower)
+population_by_neighborhood <- pop_by_neighborhood
+# View(population_by_neighborhood)
+
+#Unemployment -- at neighborhood level
+umemployment_subset <- subset(unemployment, select = -c(3,4))
+# View(umemployment_subset)
+umemployment_subset <- umemployment_subset[demand_occupation == "Registered unemployed"]
+
+umemployment_subset <- subset(umemployment_subset, select = -c(5,6))
+umemployment_subset[, unemployment := sum(number), by = c("year","neighborhood_code")]
+
+umemployment_subset <- subset(umemployment_subset, select = -c(2))
+umemployment_subset <- subset(umemployment_subset, select = -c(4))
+umemployment_subset <- distinct(umemployment_subset, year, neighborhood_code, .keep_all = TRUE)
+umemployment_subset <- umemployment_subset[neighborhood_name != "No consta"]
+unemployment_by_neighborhood <- umemployment_subset
+
+#Immigrants -- at neighborhood level
+imm_subset <- subset(immigrants_emigrants_age, select = -c(2,3,8))
+imm_subset <- imm_subset[, immigrants_total := sum(Immigrants), by = c("Year","Neighborhood Code")]
+
+#sum(imm_subset[Year == 2017 & `Neighborhood Code` == 1]$Immigrants)
+imm_subset <- subset(imm_subset, select = -c(4,5))
+imm_subset <- rename_with(imm_subset, tolower)
+colnames(imm_subset)[2] <- "neighborhood_code"
+colnames(imm_subset)[3] <- "neighborhood_name"
+imm_subset <- distinct(imm_subset, year, neighborhood_code, .keep_all = TRUE)
+imm_subset<-imm_subset[neighborhood_name!="No consta"]
+# unique(imm_subset$year)
+imm_by_neighborhood <- imm_subset
+
+# View(unemployment_by_neighborhood)
+# View(population_by_neighborhood)
+
+# unique(unemployment_by_neighborhood$year)
+# unique(population_by_neighborhood$year)
+
+colnames(population_by_neighborhood)[2] <- "neighborhood_code"
+colnames(population_by_neighborhood)[3] <- "neighborhood_name"
+
+# Merging unmeployment_by_neighborhood, population_by_neighborhood table and immigration
+unemp_pop_by_neighborhood <- merge(unemployment_by_neighborhood, population_by_neighborhood, by = c("year", "neighborhood_code", "neighborhood_name"))
+# View(unemp_pop_by_neighborhood)
+unemp_pop_by_neighborhood <- unemp_pop_by_neighborhood[year!=2013 & year!=2014]
+# unique(unemp_pop_by_neighborhood$year)
+# View(unemp_pop_by_neighborhood)
+unemp_pop_by_neighborhood <- subset(unemp_pop_by_neighborhood, select = -c(5, 6))
+unemp_pop_imm_by_neighborhood <- merge(unemp_pop_by_neighborhood, imm_by_neighborhood, by = c("year","neighborhood_code","neighborhood_name"))
+colnames(unemp_pop_imm_by_neighborhood)[5] <- "population"
+# View(unemp_pop_imm_by_neighborhood)
+
+# Since number of registered unemployed candidates is dependent on the population of neighborhood, thus 
+# normalizing unemployment with population of the 
+
+  # ggplot(unemp_pop_imm_by_neighborhood, aes(unemployment, immigrants_total)) +
+  # geom_point()
+
+unemp_pop_imm_by_neighborhood <- unemp_pop_imm_by_neighborhood[, normalized_unemp := unemployment/population]
+
+head(unemp_pop_imm_by_neighborhood)
+
+```
+<!-- Life Expectancy -->
+```{r,echo=FALSE, results='hide',message=FALSE}
+## LIFE EXPECTANCY
+
+#Import files
+life_expectancy <- fread("data/life_expectancy.csv")
+districts <- fread("data/District_Neighborhood_Mapping.csv")
+#population <- read_csv("population.csv")
+
+# #Import as data.table
+life_exp <- as.data.table(life_expectancy)
+districts <- as.data.table(districts)
+
+#merge both district and life_exp table
+life_exp <- rename.vars(life_exp, from = "Neighborhood", to = "Neighborhood.Name")
+#districts <- rename.vars(districts, from = "Neighborhood", to = "Neighborhood.Name")
+life_exp <- merge(life_exp, districts, by = "Neighborhood.Name", all = TRUE)
+
+#Omit rows with NA
+life_exp <- na.omit(life_exp)
+
+#Melt table to get all years in a single column
+life_exp <- melt(life_exp,
+                         id.vars = c("Neighborhood.Name", "Gender", "District.Name"),
+                         measure.vars = c("2006-2010", "2007-2011", "2008-2012", "2009-2013", "2010-2014"),
+                         variable.name = "Years",
+                         value.name = "Life_Expectancy")
+
+#Cast table to get Male and Female Population as seperate columns
+life_exp <- as.data.table(life_exp)
+life_exp <- dcast(life_exp, ... ~ Gender,  value.var  = "value")
+life_exp <- data.table(life_exp)
+#Avg life exp (Male + Female)/2
+life_exp <- life_exp[, avg_life_exp := (Male + Female)/2]
+
+#Avg life expectancy by neighborhood(nbh) and district(dtr)
+life_exp_nbh <- life_exp[, .(avg_by_nb = mean(avg_life_exp)), by = Neighborhood.Name]
+life_exp_dtr <- life_exp[, .(avg_by_dtr = mean(avg_life_exp)), by = District.Name]
+
+#Importing immigrants by nationality for 2015 since life expectancy data is available only till 2014
+immigrants <- fread('data/immigrants_by_nationality.csv')
+immigrants_2015 <- immigrants[Year == 2015]
+immigrants_2015 <- rename.vars(immigrants_2015, from = "Neighborhood Name", to = "Neighborhood.Name")
+immigrants_2015 <- rename.vars(immigrants_2015, from = "District Code", to = "District.Code")
+immigrants_2015 <- rename.vars(immigrants_2015, from = "District Name", to = "District.Name")
+
+immigrants_2015 <- rename.vars(immigrants_2015, from = "Neighborhood Code", to = "Neighborhood.Code")
+immigrants_2015_nbh <- immigrants_2015[, .(total_immigrants = sum(Number), Neighborhood.Code = unique(Neighborhood.Code)), by = "Neighborhood.Name"]
+immigrants_2015_dtr <- immigrants_2015[, .(total_immigrants = sum(Number), District.Code = unique(District.Code)), by = "District.Name"]
+
+#Merge expectancy and total immigrants for neighborhood (nbh)
+life_exp_immig_nbh <- merge(life_exp_nbh, immigrants_2015_nbh, by = "Neighborhood.Name", all = TRUE)
+life_exp_immig_nbh <-na.omit(life_exp_immig_nbh)
+life_exp_immig_nbh <- rename.vars(life_exp_immig_nbh, from = "total_immigrants", to = "immigrant_count")
+life_exp_immig_nbh <- rename.vars(life_exp_immig_nbh, from = "avg_by_nb", to = "avg_life_exp")
+life_exp_immig_nbh$Year <- "2015"
+
+head(life_exp_immig_nbh)
+
+```
+
+
+\newpage
+## Data Analysis
+
+
+
+In this section, the analysis on number of bus stops, accidents, number of unemployed people and life expectancy per neighborhood in relation to the immigrant population are conducted. For each variable the p-value using Spearman correlation test is given. The reason why Spearman correlation was used, is because the immigrant count per neighborhood does not follow a Gaussian distribution (Figure 2). For all the tests, the null hypothesis states that there is no correlation between the variable and the immigrant count.
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.height=3,fig.width=10}
+mynamestheme2 <- theme(plot.title = element_text(family = "Helvetica", size = (13)),
+                      legend.title=element_text(family="Helvetica", size= (11)), 
+                      legend.text = element_text(family = "Helvetica", size =(11)),
+                      axis.title = element_text(family = "Helvetica", size = (11)),
+                      axis.text = element_text(family = "Helvetica", size = (8))) 
+
+ggplot(unemp_pop_imm_by_neighborhood, aes(x=immigrants_total)) + 
+  geom_histogram() +
+  ggtitle("Figure 2: Immigrant population distribution.") + 
+  xlab("Number of total immigrants")+
+  ylab("Count")+
+  mynamestheme2
+
+```
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.height=5,fig.width=10}
+
+ bus_stop_test <- cor.test(dayandnight_count_neighborhood$dayandnight_count, dayandnight_count_neighborhood$number_immigrants, method = "spearman")
+ plot1 <- ggplot(data =dayandnight_count_neighborhood, aes(dayandnight_count, number_immigrants)) + 
+  geom_point() + geom_smooth(method = "lm") +
+  ggtitle("Figure 3.1: Connectivity vs Immigrants") +
+  xlab("Number of bus stops") +
+  ylab("Number of immigrants") +
+   annotate("text", x=70, y=4500, label= paste("p_val=",as.character(round(bus_stop_test$p.value,5))),color="red")+
+   mynamestheme2
+
+accident_test <- cor.test(merged_accidents_immigrants$accidents_per_1000,merged_accidents_immigrants$immigrant_count,method="spearman")
+plot2 <- ggplot(merged_accidents_immigrants,aes(accidents_per_1000,immigrant_count)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  ggtitle("Figure 3.2: Accidents vs Immigrants") +
+  xlab("Number of accidents (per 1000)") +
+  ylab("Number of immigrants") +
+  mynamestheme2 +
+  annotate("text", x=17, y=4000, label= paste("p_val=",as.character(round(accident_test$p.value,5))),
+          color="red") +
+  xlim(0,20) # if we want to ignore the outlier 
+
+unemp_test <- cor.test(unemp_pop_imm_by_neighborhood$normalized_unemp, unemp_pop_imm_by_neighborhood$immigrants_total, method = "spearman")
+plot3 <- ggplot(unemp_pop_imm_by_neighborhood, aes(normalized_unemp, immigrants_total)) +
+    geom_point() +
+  geom_smooth(method="lm")+
+   ggtitle("Figure 3.3: Unemployment vs Immigrants") +
+  xlab("Number of unemployed people (normalised)") +
+  ylab("Number of immigrants") +
+  mynamestheme2+
+  annotate("text", x=1.4, y=4000, label= paste("p_val=",as.character(round(unemp_test$p.value,5))),
+          color="red")
+
+life_exp_test <- cor.test(life_exp_immig_nbh$immigrant_count, life_exp_immig_nbh$avg_life_exp, method="spearman")
+plot4 <- ggplot(data=life_exp_immig_nbh, aes(y=immigrant_count, x=avg_life_exp)) + 
+  geom_point() + 
+  stat_smooth(method='lm') +
+  ggtitle("Figure 3.4: Life Expectancy vs Immigrants") +
+  xlab("Average life expectancy") +
+  ylab("Number of immigrants") +
+  mynamestheme2 +
+  annotate("text", x=80, y=4000, label= paste("p_val=",as.character(round(life_exp_test$p.value,5))),
+          color="red")
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2,nrow=2)
+
+```
+
+From the above four plots a number of observations can be made. Firstly, the number of accidents (Figure 3.2) and average life expectancy (Figure 3.4) of a neighborhood do not have any correlation with the immigrant population. This is confirmed by the correlation tests which return high p-values and hence it is failing to reject the null hypothesis. However, for the number of bus stops (Figure 3.1) and unemployment (Figure 3.3) the relationship is the other way around. This can be confirmed by the low p-values obtained, which means that the null hypothesis can be rejected at a 5% level of confidence, therefore some correlation between the variables exists. In consequence, for these variables further testing to figure out a linear relationship between the number of immigrants in a given neighborhood will be carried out, but first of all the three assumptions of linear regression should be fulfilled. 
+
+
+```{r,echo=FALSE,,warning=FALSE,message=FALSE,fig.height=5,fig.width=10}
+
+## Checking assumptions of linearity for unemployment.
+fit <- lm(immigrants_total ~ unemployment , data = unemp_pop_imm_by_neighborhood[year==2017])
+# coefficients(fit)
+y_hat <- predict(fit, se.fit = TRUE)
+#Testing Heteroscedascity -- to check if the variance of the residuals is constant across all data points
+plot1 <- ggplot(data = NULL, aes(predict(fit), residuals(fit))) +
+  geom_point() +
+  geom_abline(intercept=0, slope=0) +
+  labs(x=expression(hat(y)), y="Residuals") +
+  ggtitle("Figure 4.1: Testing Heteroscedascity for Unemployment Model")+
+  mynamestheme2
+
+#### This violates the i.i.d. assumption of the errors.
+# #Testing if the residuals follow a Gaussian distribution or not
+# qqnorm(residuals(fit))
+# qqline(residuals(fit))
+
+
+#### Residuals follow a Gaussian distribution, not for entire set of residuals though!
+## Checking assumptions of linearity for bus stops per neighbourhood
+m2 <- lm(formula= number_immigrants ~ dayandnight_count, data = dayandnight_count_neighborhood)
+# coefficients(m2)
+
+y_hat2 <- predict(m2, se.fit = TRUE)
+# y_hat2
+# summary(m2)
+
+#Testing heterocedasticity
+plot2 <- ggplot(data = NULL, aes(predict(m2), residuals(m2)))+
+  geom_point()+
+  geom_abline(intercept= 0, slope = 0)+
+  labs(x=expression(hat(y)), y="Residuals") +
+  ggtitle("Figure 4.2: Testing Heteroscedascity for Bus Stops Model")+
+  mynamestheme2
+# #Testing if the residuals follow a Gaussian distribution or not
+# qqnorm(residuals(fit))
+# qqline(residuals(fit))
+
+grid.arrange(plot1, plot2, nrow=2)
+
+```
+For both of the models, the variance of residuals is not constant, violating the assumption that the errors are identically and independently distributed and hence the resultant models will not be very effective. Nevertheless, on going ahead with the linear models the following results were obtained: 
+
+```{r,echo=FALSE,,warning=FALSE,message=FALSE,fig.height=5,fig.width=10}
+
+# head(unemp_pop_imm_by_neighborhood[year==2017])
+# head(dayandnight_count_neighborhood[order(-number_immigrants)])
+
+setnames(dayandnight_count_neighborhood,"number_immigrants","immigrant_count")
+setnames(dayandnight_count_neighborhood,"neighborhood_name","Neighborhood.Name")
+
+setnames(unemp_pop_imm_by_neighborhood,"immigrants_total","immigrant_count")
+setnames(unemp_pop_imm_by_neighborhood,"neighborhood_name","Neighborhood.Name")
+
+test <- merge(unemp_pop_imm_by_neighborhood[year==2017],dayandnight_count_neighborhood,by="Neighborhood.Name")
+
+# head(test)
+
+# ggplot(test,aes(dayandnight_count,unemployment)) +
+#   geom_point()  +
+#   geom_smooth(method="lm")
+
+# test[,immigrant_count.x,immigrant_count.y]
+
+model1 <- lm(immigrant_count.x~unemployment+dayandnight_count,data=test)
+model2 <- lm(immigrant_count.x~dayandnight_count,data=test)
+model3 <- lm(immigrant_count.x~unemployment,data=test)
+
+anova(model2,model1)
+## p=1.62e-15 hence using both fields did improve the model significantly
+anova(model3,model1)
+## p=0.02 hence using both fields did improve the model significantly
+
+## Unemployment+bus stops best indicators for immigrant population
+
+```
+From the current data it appears that the complex Model 2 (immigrant count ~ unemployment + bus stops) works better than the simpler models Model 1 (immigrant count ~ bus stops) for the upper table, and Model 1 (immigrant count ~ unemployment) for the downer one. This is ascertained by the p-values of the ANOVA test which are 1.62e-15 and 0.02 respectively. Hence the null hypothesis can be rejected, which states that the complex model is not better than the models on individuals factors.
+
+\newpage
+## Conclusion 
+
+
+From the performed analysis is proceed to conclude that unemployment and bus stops (connectivity measurement) do have some correlation with the number of immigrants allocated in a certain neighborhood. In the case of unemployment the correlation (-0.207) tells that immigrants do tend to live in neighborhoods with better employability. For the bus stops the positive correlation (0.463) is consistent with reality because of the necessity of being easily connected. This would be particularly important for immigrants who rely heavily on public transport as compared to private vehicles.
+
+On verifying the assumptions for linear regression, is noticed that both unemployment and bus stops, do not conform to them strictly. However, since the variation in residuals is not huge, the linear models for these data points were compared and the ANOVA test showed that a model using both of these factors performed better than a simpler model with either one of them.
+
+For accidents is seen that there is not much correlation, negative or positive, with immigrant population. This could imply that immigrants don't necessarily care about these numbers and are more focused on factors like cost of living and connectivity. The assumption for taking into account this variable, was that better life expectancy could relate to better health services or higher safety in a neighborhood. It seems that this is not a contributing factor in the distribution of immigrants in the city of Barcelona.
+
+Some of the shortcomings of the analysis are the lack of data on factors such as cost of living that might have a significant correlation with the immigrant population. In addition, as the literature states, the presence of other immigrants with the same cultural background in the neighborhood would also have been a useful explanatory variable. Regarding the model, an additional linear analysis could be performed using Poisson regression, considering that the dependent variable "immigrant count per neighborhood", possesses such a distribution (Figure 2) and, therefore, this more complex model, in conjunction with the other explanatory variables mentioned above, could provide a better understanding of immigrant allocation patterns.
+
+
+## References
+
+For creating the district maps, shape files for the city of Barcelona were obtained from https://opendata-ajuntament.barcelona.cat/data/en/dataset.
+
+Bartel, Ann P., (1989). “Where Do the New U.S. Immigrants Live?” Journal of Labor Economics, Vol. 7, No. 4, pp. 371-391.
+
+Chiswick, Barry R., Yew Liang Lee and P.W. Miller (2001). “Geographical Concentration Among Immigrants in Australia,” Australasian Journal of Regional Studies, Vol. 7, No. 2, 2001, pp.125-150.
+
+Chiswick, B., Miller, P. (2004), "Where Immigrants Settle in the United States", Journal of Labor Economics, Discussion Paper No. 1231.
+
+Malgesini, G. (2006), “Immigrants from Urban to Rural Areas in Spain: The Impact of Transnationalism”, online resource, Centro de Investigación para la Paz.
+
+
+
+
+
+
+

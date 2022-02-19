@@ -1,0 +1,10 @@
+
+*********************************************************
+LISTADO DE CAPAS EXPORTADAS
+
+
+Nombre de la capa: Límit districte
+Nombre de la capa: Límit terme municipal
+Nombre de la capa: Nom districte
+
+*********************************************************
